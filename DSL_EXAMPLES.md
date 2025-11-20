@@ -204,6 +204,10 @@ workflow:
 4. `sync_barrier` fires once all three processing tasks have completed, signalling safe continuation.
 5. `merge` aggregates the partial outputs into a final artifact.
 
+### SVG Visualization
+
+![Pipeline barrier petri net diagram](./images/pipeline_barrier.svg)
+
 ### Why It Matters
 
 - **Barrier semantics without code**: Even though the current compiler does not yet wire the barrier output automatically, the DSL captures the intent so the engine (or future extensions) can enforce it.
