@@ -1,0 +1,83 @@
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    
+    <style><![CDATA[
+      /* Petri Net Specifics */
+      .place { fill: #ffffff; stroke: #334155; stroke-width: 2; filter: url(#dropShadow); }
+      .transition { fill: #3b82f6; stroke: #1d4ed8; stroke-width: 2; rx: 2; filter: url(#dropShadow); }
+      
+      /* Tokens */
+      .token { fill: #ef4444; stroke: none; }
+      
+      /* Typography */
+      .label-place { font-family: "Roboto Mono", monospace; font-size: 10px; fill: #475569; text-anchor: middle; }
+      .label-trans { font-family: sans-serif; font-size: 11px; fill: #ffffff; font-weight: bold; text-anchor: middle; dominant-baseline: middle; }
+      .group-label { font-family: sans-serif; font-size: 14px; fill: #94a3b8; font-weight: bold; text-transform: uppercase; }
+
+      /* Edges */
+      .edge { stroke: #64748b; stroke-width: 1.5; fill: none; stroke-linejoin: round; }
+      .feedback { stroke: #ef4444; stroke-dasharray: 4,4; }
+    ]]></style>
+    
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" fill="#64748b">
+      <path d="M0,0 L10,3.5 L0,7 Z" />
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" fill="#ef4444">
+      <path d="M0,0 L10,3.5 L0,7 Z" />
+    </marker>
+  </defs>
+
+  <text x="50" y="30" class="group-label">Input State</text>
+  <text x="350" y="30" class="group-label">Agent Processing (Transitions)</text>
+  <text x="650" y="30" class="group-label">Output State</text>
+
+  <circle class="place" cx="80" cy="250" r="25" />
+  <circle class="token" cx="80" cy="250" r="6" /> <text class="label-place" x="80" y="295">P1: Ticket_Pool</text>
+
+  <line class="edge" x1="105" y1="250" x2="160" y2="250" marker-end="url(#arrow)" />
+
+  <rect class="transition" x="160" y="225" width="80" height="50" />
+  <text class="label-trans" x="200" y="250">T1: Triage</text>
+
+  <path class="edge" d="M240 250 C 260 250, 260 150, 300 150" marker-end="url(#arrow)" />
+  <path class="edge" d="M240 250 C 260 250, 260 350, 300 350" marker-end="url(#arrow)" />
+
+  <circle class="place" cx="325" cy="150" r="25" />
+  <text class="label-place" x="325" y="115">P2: Billing_Q</text>
+
+  <circle class="place" cx="325" cy="350" r="25" />
+  <text class="label-place" x="325" y="395">P3: Tech_Q</text>
+
+  <line class="edge" x1="350" y1="150" x2="400" y2="150" marker-end="url(#arrow)" />
+  <line class="edge" x1="350" y1="350" x2="400" y2="350" marker-end="url(#arrow)" />
+
+  <rect class="transition" x="400" y="125" width="90" height="50" style="fill:#10b981; stroke:#059669;" />
+  <text class="label-trans" x="445" y="150">T2: Bill_Agent</text>
+
+  <rect class="transition" x="400" y="325" width="90" height="50" style="fill:#10b981; stroke:#059669;" />
+  <text class="label-trans" x="445" y="350">T3: Tech_Agent</text>
+
+  <path class="edge" d="M490 150 C 520 150, 520 230, 560 240" marker-end="url(#arrow)" />
+  <path class="edge" d="M490 350 C 520 350, 520 270, 560 260" marker-end="url(#arrow)" />
+
+  <circle class="place" cx="585" cy="250" r="25" />
+  <text class="label-place" x="585" y="295">P4: Draft_Buffer</text>
+
+  <line class="edge" x1="610" y1="250" x2="650" y2="250" marker-end="url(#arrow)" />
+
+  <rect class="transition" x="650" y="220" width="60" height="60" style="fill:#ef4444; stroke:#b91c1c;" />
+  <text class="label-trans" x="680" y="240">T4: QA</text>
+  <text class="label-trans" x="680" y="260" style="font-size:9px; font-weight:normal">(Review)</text>
+
+  <path class="edge feedback" d="M680 220 C 680 50, 325 50, 325 120" marker-end="url(#arrow-red)" />
+  <path class="edge feedback" d="M680 280 C 680 450, 325 450, 325 380" marker-end="url(#arrow-red)" />
+  <text x="500" y="65" class="label-place" fill="#ef4444">Reject (Back to Queue)</text>
+
+  <path class="edge" d="M710 250 L 745 250" marker-end="url(#arrow)" />
+  <circle class="place" cx="770" cy="250" r="20" style="stroke:#10b981; stroke-width:3;" />
+  <text class="label-place" x="770" y="290">P5: Sent</text>
+
+</svg>

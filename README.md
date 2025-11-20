@@ -2,6 +2,20 @@
 
 A demonstration of Petri net-based workflow execution in Go, showcasing advantages over traditional DAG approaches for specific use cases.
 
+![Petri Net Workflow Engine](./images/petri_net.svg)
+
+**Standard Flowchart (DAG):** Shows **Sequence** (Step A → Step B).
+**Petri Net:** Shows **State** (Where is the data *right now*?).
+
+**The 3 Key Ideas:**
+
+1. **Decoupling (The Buffer):**
+    The **Draft Buffer (P4)** is critical. It allows the Specialist Agents to work fast and pile up drafts even if the Supervisor is slow. In a normal flowchart, the fast agent would be blocked waiting for the slow one.
+2. **True Feedback Loops:**
+    The **Red Dotted Line** isn't just a "No"; it physically moves the **Token** back to the **Queue (P2/P3)**. This resets the state of the ticket, forcing the agent to try again.
+3. **Bottleneck Detection:**
+    Because state is explicit, you can instantly see where the system is broken. If **P4** is full of tokens, you know the Supervisor is the bottleneck. If **P1** is full, you know the Router is the bottleneck.
+
 ## What is a Petri Net?
 
 A Petri net is a mathematical modeling language for describing distributed systems:
