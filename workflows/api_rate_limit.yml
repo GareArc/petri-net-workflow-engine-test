@@ -1,0 +1,42 @@
+workflow:
+  name: API Rate-Limited Document Processing
+  
+  resources:
+    # Max 3 concurrent API calls
+    - id: api_tokens
+      type: semaphore
+      capacity: 3
+  
+  channels:
+    # Input queue of documents
+    - id: documents
+      capacity: 100
+      type: fifo
+    
+    # Processed results
+    - id: results
+      capacity: -1
+  
+  tasks:
+    # Load documents into queue
+    - id: load_docs
+      type: producer
+      output: documents
+      source: "./data/*.pdf"
+      
+    # Process each document with API rate limiting
+    - id: process_doc
+      type: llm
+      input: documents
+      output: results
+      model: gpt-4
+      prompt: "Summarize this document: {{input}}"
+      requires:
+        api_tokens: 1  # Needs 1 API token
+      parallel: true
+      
+    # Save results
+    - id: save_results
+      type: consumer
+      input: results
+      destination: "./output/summaries.json"
