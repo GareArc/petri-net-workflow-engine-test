@@ -133,14 +133,22 @@ workflow:
   name: Parallel Pipeline with Barrier
 
   channels:
-    - { id: raw_data,     capacity: 1 }
-    - { id: batch_a,      capacity: 1 }
-    - { id: batch_b,      capacity: 1 }
-    - { id: batch_c,      capacity: 1 }
-    - { id: result_a,     capacity: 1 }
-    - { id: result_b,     capacity: 1 }
-    - { id: result_c,     capacity: 1 }
-    - { id: final_result, capacity: 1 }
+    - id: raw_data
+      capacity: 1
+    - id: batch_a
+      capacity: 1
+    - id: batch_b
+      capacity: 1
+    - id: batch_c
+      capacity: 1
+    - id: result_a
+      capacity: 1
+    - id: result_b
+      capacity: 1
+    - id: result_c
+      capacity: 1
+    - id: final_result
+      capacity: 1
 
   tasks:
     - id: fetch
@@ -170,25 +178,23 @@ workflow:
       output: result_c
       config: { script: "process_batch.py" }
 
-  gateways:
-    - id: sync_barrier
-      type: barrier
-      wait_for: [process_a, process_b, process_c]
-
-  tasks:
     - id: merge
       type: aggregator
       inputs: [result_a, result_b, result_c]
       output: final_result
-      depends_on: sync_barrier
+
+  gateways:
+    - id: sync_barrier
+      type: barrier
+      wait_for: [process_a, process_b, process_c]
 ```
 
 ### How the DSL Compiles
 
 - The `split` task becomes a transition with one input arc (`raw_data`) and multiple output arcs. Each firing duplicates the token into the three batch places, illustrating fan-out without manual bookkeeping.
 - `process_a/b/c` are independent transitions consuming their respective batches and producing results, so they can run concurrently.
-- The `sync_barrier` gateway creates a helper transition that waits until a token is present in each `process_*` completion place before emitting a synchronization token. This ensures the downstream `merge` task does not fire early.
-- The final `merge` task consumes one token from each of the `result_*` channel places (plus the barrier signal if you modify the DSL to wire it explicitly) and emits to `final_result`.
+- The `sync_barrier` gateway expresses that all three processing tasks must complete before downstream work proceeds. The current compiler materializes a `<gateway_id>_complete` place; you can extend the DSL/compiler to add arcs from that place into tasks that should respect the barrier.
+- The final `merge` task consumes one token from each of the `result_*` channel places and emits a single `final_result`. Because it waits on all three inputs, it effectively acts as a join/fan-in even without the barrier signal.
 
 ### Execution Story
 
@@ -200,7 +206,7 @@ workflow:
 
 ### Why It Matters
 
-- **Barrier semantics without code**: The DSL expresses synchronization at the YAML layer, enabling formal reasoning about when transitions may fire.
+- **Barrier semantics without code**: Even though the current compiler does not yet wire the barrier output automatically, the DSL captures the intent so the engine (or future extensions) can enforce it.
 - **Explicit fan-out/fan-in**: Multiple `outputs` and `inputs` map to the many-to-many Petri net edges automatically.
 - **Composable stages**: Because every step reads/writes named channels, you can insert additional tasks (validation, enrichment, etc.) by editing YAML alone.
 

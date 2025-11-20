@@ -5,6 +5,7 @@ A demonstration of Petri net-based workflow execution in Go, showcasing advantag
 ## What is a Petri Net?
 
 A Petri net is a mathematical modeling language for describing distributed systems:
+
 - **Places** = States (can hold tokens)
 - **Transitions** = Actions (can fire when enabled)
 - **Tokens** = Data/Resources flowing through
@@ -23,17 +24,12 @@ A Petri net is a mathematical modeling language for describing distributed syste
 ### When to Use Petri Nets
 
 ✅ **Good for**:
+
 - API rate limiting
 - Resource pools (DB connections, workers)
 - Producer-consumer patterns
 - Complex synchronization
 - Long-running workflows with checkpoints
-
-❌ **Overkill for**:
-- Simple linear workflows
-- Basic iteration
-- Tree-structured dependencies
-- Most AI/LLM workflows
 
 ## Project Structure
 
@@ -57,6 +53,7 @@ petri-net-mvp/
 **Problem**: Process 10 API requests with max 3 concurrent calls.
 
 **DAG Approach**:
+
 ```go
 // Need explicit semaphore
 sem := make(chan struct{}, 3)
@@ -70,6 +67,7 @@ for _, req := range requests {
 ```
 
 **Petri Net Approach**:
+
 ```
 Places:
   - api_tokens: 3 tokens (max concurrent)
@@ -85,12 +83,14 @@ Transition:
 ✨ **Advantage**: Resource constraint is declarative, not imperative.
 
 **Run**:
+
 ```bash
 cd examples
 go run 01_rate_limiting.go
 ```
 
 **Output**:
+
 ```
 🚀 Starting Petri Net: API Rate Limiter
   📡 Processing API request 0...
@@ -112,6 +112,7 @@ go run 01_rate_limiting.go
 **Problem**: Producer creates items faster than consumer processes them.
 
 **DAG Approach**:
+
 ```go
 // Need explicit channel with capacity
 queue := make(chan Item, 5)  // Bounded queue
@@ -130,6 +131,7 @@ go func() {  // Consumer
 ```
 
 **Petri Net Approach**:
+
 ```
 Places:
   - producer_ready: 1 token
@@ -144,6 +146,7 @@ Transitions:
 ✨ **Advantage**: Backpressure is automatic. Producer naturally slows when queue approaches capacity.
 
 **Run**:
+
 ```bash
 go run 02_producer_consumer.go
 ```
@@ -155,6 +158,7 @@ go run 02_producer_consumer.go
 **Problem**: Wait for all 3 workers to complete before continuing.
 
 **DAG Approach**:
+
 ```go
 var wg sync.WaitGroup
 wg.Add(3)
@@ -168,6 +172,7 @@ processResults()
 ```
 
 **Petri Net Approach**:
+
 ```
 Places:
   - worker1_done, worker2_done, worker3_done
@@ -181,6 +186,7 @@ Transition (Barrier):
 ✨ **Advantage**: Synchronization is visual and declarative. Transition only fires when ALL inputs ready.
 
 **Run**:
+
 ```bash
 go run 03_barrier_sync.go
 ```
@@ -239,12 +245,12 @@ net.RunContinuous(ctx, 100*time.Millisecond)
 
 ## Performance Characteristics
 
-| Operation | Complexity |
-|-----------|------------|
-| Check if transition can fire | O(arcs) |
-| Fire transition | O(arcs) |
-| Find enabled transitions | O(transitions) |
-| Overall execution | O(iterations × transitions × arcs) |
+| Operation                    | Complexity                         |
+| ---------------------------- | ---------------------------------- |
+| Check if transition can fire | O(arcs)                            |
+| Fire transition              | O(arcs)                            |
+| Find enabled transitions     | O(transitions)                     |
+| Overall execution            | O(iterations × transitions × arcs) |
 
 For workflows with many transitions, Petri nets can be slower than DAG execution. The trade-off is expressiveness vs raw speed.
 
@@ -252,16 +258,15 @@ For workflows with many transitions, Petri nets can be slower than DAG execution
 
 ## Comparison: Petri Net vs DAG
 
-| Feature | DAG | Petri Net |
-|---------|-----|-----------|
-| **Simplicity** | ✅ Very simple | ⚠️ More complex |
-| **Resource constraints** | ❌ Manual | ✅ Built-in |
-| **Synchronization** | ⚠️ WaitGroup needed | ✅ Declarative |
-| **Backpressure** | ❌ Channels/semaphores | ✅ Automatic |
-| **Deadlock detection** | ❌ Hard to prove | ✅ Analyzable |
-| **Visual clarity** | ✅ Excellent | ✅ Excellent |
-| **Performance** | ✅ Fast | ⚠️ Moderate |
-| **Use case fit (AI)** | ✅ Perfect | ⚠️ Overkill |
+| Feature                  | DAG                   | Petri Net      |
+| ------------------------ | --------------------- | -------------- |
+| **Simplicity**           | ✅ Very simple         | ⚠️ More complex |
+| **Resource constraints** | ❌ Manual              | ✅ Built-in     |
+| **Synchronization**      | ⚠️ WaitGroup needed    | ✅ Declarative  |
+| **Backpressure**         | ❌ Channels/semaphores | ✅ Automatic    |
+| **Deadlock detection**   | ❌ Hard to prove       | ✅ Analyzable   |
+| **Visual clarity**       | ✅ Excellent           | ✅ Excellent    |
+| **Performance**          | ✅ Fast                | ⚠️ Moderate     |
 
 ---
 
@@ -270,6 +275,7 @@ For workflows with many transitions, Petri nets can be slower than DAG execution
 **For Dify workflows**: Stick with DAG for 95% of cases.
 
 **Add Petri net semantics** for:
+
 - API rate limiting (ChatGPT, Claude quotas)
 - Database connection pools
 - Worker pool management
@@ -313,9 +319,3 @@ go build -o barrier 03_barrier_sync.go
 - [Petri Nets - Wikipedia](https://en.wikipedia.org/wiki/Petri_net)
 - [Workflow Nets](https://en.wikipedia.org/wiki/Workflow_net)
 - van der Aalst, W.M.P. (1998). "The Application of Petri Nets to Workflow Management"
-
----
-
-**Author**: Dify Go MVP Project  
-**License**: MIT  
-**Purpose**: Educational demonstration of Petri net advantages for workflow systems

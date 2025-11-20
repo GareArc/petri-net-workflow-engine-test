@@ -1,6 +1,6 @@
 workflow:
   name: Parallel Pipeline with Barrier
-  
+
   channels:
     - id: raw_data
       capacity: 1
@@ -18,53 +18,46 @@ workflow:
       capacity: 1
     - id: final_result
       capacity: 1
-  
+
   tasks:
-    # Fetch data
     - id: fetch
       type: http
       output: raw_data
       config:
         url: "https://api.example.com/data"
-      
-    # Split into 3 batches
+
     - id: split
       type: splitter
       input: raw_data
       outputs: [batch_a, batch_b, batch_c]
-      
-    # Process 3 batches in parallel
+
     - id: process_a
       type: transform
       input: batch_a
       output: result_a
       config:
         script: "process_batch.py"
-      
+
     - id: process_b
       type: transform
       input: batch_b
       output: result_b
       config:
         script: "process_batch.py"
-      
+
     - id: process_c
       type: transform
       input: batch_c
       output: result_c
       config:
         script: "process_batch.py"
-  
-  # Barrier: wait for all 3 to complete
-  gateways:
-    - id: sync_barrier
-      type: barrier
-      wait_for: [process_a, process_b, process_c]
-  
-  tasks:
-    # After barrier, merge results
+
     - id: merge
       type: aggregator
       inputs: [result_a, result_b, result_c]
       output: final_result
-      depends_on: sync_barrier
+
+  gateways:
+    - id: sync_barrier
+      type: barrier
+      wait_for: [process_a, process_b, process_c]
