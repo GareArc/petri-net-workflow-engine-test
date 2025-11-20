@@ -39,7 +39,24 @@ func (c *Compiler) Compile(wf *Workflow) (*petrinet.PetriNet, error) {
 		net.AddPlace(place)
 	}
 
-	// Step 2: Create places for channels
+	// Step 2: Create places for contexts
+	for _, ctx := range wf.Contexts {
+		place := petrinet.NewPlace(
+			ctx.ID,
+			ctx.ID,
+			ctx.Capacity,
+		)
+		// Seed with a single context token if capacity allows.
+		if ctx.Capacity != 0 {
+			place.AddTokens(&petrinet.Token{
+				ID:   fmt.Sprintf("%s-token-0", ctx.ID),
+				Data: map[string]interface{}{},
+			})
+		}
+		net.AddPlace(place)
+	}
+
+	// Step 3: Create places for channels
 	for _, channel := range wf.Channels {
 		place := petrinet.NewPlace(
 			channel.ID,
@@ -49,10 +66,20 @@ func (c *Compiler) Compile(wf *Workflow) (*petrinet.PetriNet, error) {
 		net.AddPlace(place)
 	}
 
-	// Step 3: Create transitions for tasks
+	// Step 4: Create transitions for tasks
 	for _, task := range wf.Tasks {
 		transition := c.compileTask(task)
 		net.AddTransition(transition)
+
+		// Connect context place if specified (consumed and re-emitted).
+		if task.Context != "" {
+			if ctxPlace, ok := net.Places[task.Context]; ok {
+				transition.AddInputArc(ctxPlace, 1)
+				transition.AddOutputArc(ctxPlace, 1)
+			} else {
+				return nil, fmt.Errorf("task %s references missing context place %s", task.ID, task.Context)
+			}
+		}
 
 		// Connect input channels
 		if task.Input != "" {
@@ -77,11 +104,20 @@ func (c *Compiler) Compile(wf *Workflow) (*petrinet.PetriNet, error) {
 		for _, outputID := range task.Outputs {
 			transition.AddOutputArc(net.Places[outputID], 1)
 		}
+
+		// Emit completion signal for barrier gateways.
+		donePlaceID := task.ID + "_done"
+		if _, exists := net.Places[donePlaceID]; !exists {
+			net.AddPlace(petrinet.NewPlace(donePlaceID, task.ID+" Done", -1))
+		}
+		transition.AddOutputArc(net.Places[donePlaceID], 1)
 	}
 
-	// Step 4: Handle gateways (barriers, splits, merges)
+	// Step 5: Handle gateways (barriers, splits, merges)
 	for _, gateway := range wf.Gateways {
-		c.compileGateway(gateway, net)
+		if err := c.compileGateway(gateway, net); err != nil {
+			return nil, err
+		}
 	}
 
 	return net, nil
@@ -151,10 +187,18 @@ func (c *Compiler) compileTask(task Task) *petrinet.Transition {
 }
 
 // compileGateway converts a Gateway to Petri net structures
-func (c *Compiler) compileGateway(gateway Gateway, net *petrinet.PetriNet) {
+func (c *Compiler) compileGateway(gateway Gateway, net *petrinet.PetriNet) error {
 	switch gateway.Type {
 	case "barrier":
 		// Barrier: Wait for all inputs before proceeding
+		waitFor := gateway.Inputs
+		if len(waitFor) == 0 {
+			waitFor = gateway.WaitFor
+		}
+		if len(waitFor) == 0 {
+			return nil
+		}
+
 		// Create a place for barrier state
 		barrierPlace := petrinet.NewPlace(
 			gateway.ID+"_complete",
@@ -166,26 +210,19 @@ func (c *Compiler) compileGateway(gateway Gateway, net *petrinet.PetriNet) {
 		// Create transition that fires when all inputs ready
 		barrierTransition := petrinet.NewTransition(gateway.ID, gateway.ID)
 
-		// Add input arcs from all waited tasks
-		for _, inputID := range gateway.Inputs {
-			if len(gateway.Inputs) == 0 && len(gateway.WaitFor) > 0 {
-				// Use WaitFor if Inputs is empty
-				for _, waitID := range gateway.WaitFor {
-					// Connect to task output or create signal place
-					signalPlace := petrinet.NewPlace(
-						waitID+"_done",
-						waitID+" Done Signal",
-						1,
-					)
-					net.AddPlace(signalPlace)
-					barrierTransition.AddInputArc(signalPlace, 1)
-				}
-			} else {
-				barrierTransition.AddInputArc(net.Places[inputID], 1)
+		// Add input arcs from all waited tasks (via *_done places)
+		for _, waitID := range waitFor {
+			placeID := waitID + "_done"
+			signalPlace, ok := net.Places[placeID]
+			if !ok {
+				return fmt.Errorf("barrier %s waits on missing completion place %s", gateway.ID, placeID)
 			}
+			barrierTransition.AddInputArc(signalPlace, 1)
 		}
 
 		barrierTransition.AddOutputArc(barrierPlace, 1)
 		net.AddTransition(barrierTransition)
 	}
+
+	return nil
 }

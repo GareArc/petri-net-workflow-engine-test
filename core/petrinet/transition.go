@@ -2,8 +2,15 @@ package petrinet
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"sync"
+)
+
+var (
+	// ErrNotReady indicates a transition cannot currently fire (insufficient tokens, guard fail, or no output capacity).
+	ErrNotReady = errors.New("transition not ready")
 )
 
 // Arc represents a connection between a place and a transition
@@ -58,82 +65,126 @@ func (t *Transition) Fire(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Check if can fire
-	if !t.CanFire() {
-		return fmt.Errorf("transition %s cannot fire (not enough tokens)", t.Name)
+	// Collect unique places involved (inputs + outputs) and lock deterministically to avoid races/deadlocks.
+	placeSet := make(map[*Place]struct{})
+	for _, arc := range t.InputArcs {
+		placeSet[arc.Place] = struct{}{}
+	}
+	for _, arc := range t.OutputArcs {
+		placeSet[arc.Place] = struct{}{}
 	}
 
-	// Collect input tokens
-	var inputTokens []*Token
-	for _, arc := range t.InputArcs {
-		tokens, err := arc.Place.RemoveTokens(arc.Weight)
-		if err != nil {
-			// Rollback: put back already removed tokens
-			for i := len(t.InputArcs) - 1; i >= 0; i-- {
-				prevArc := t.InputArcs[i]
-				if prevArc == arc {
-					break
-				}
-				prevArc.Place.AddTokens(inputTokens[:len(inputTokens)-prevArc.Weight]...)
-				inputTokens = inputTokens[:len(inputTokens)-prevArc.Weight]
-			}
-			return err
+	orderedPlaces := make([]*Place, 0, len(placeSet))
+	for p := range placeSet {
+		orderedPlaces = append(orderedPlaces, p)
+	}
+	sort.Slice(orderedPlaces, func(i, j int) bool { return orderedPlaces[i].ID < orderedPlaces[j].ID })
+
+	for _, p := range orderedPlaces {
+		p.mu.Lock()
+	}
+	defer func() {
+		for i := len(orderedPlaces) - 1; i >= 0; i-- {
+			orderedPlaces[i].mu.Unlock()
 		}
+	}()
+
+	// Build counts per place.
+	inputCounts := make(map[*Place]int)
+	for _, arc := range t.InputArcs {
+		inputCounts[arc.Place] += arc.Weight
+	}
+	outputCounts := make(map[*Place]int)
+	for _, arc := range t.OutputArcs {
+		outputCounts[arc.Place] += arc.Weight
+	}
+
+	// Check input availability and output capacity (accounting for tokens that will be consumed then returned to same place).
+	for place, need := range inputCounts {
+		if len(place.Tokens) < need {
+			return ErrNotReady
+		}
+	}
+	for place, outNeed := range outputCounts {
+		current := len(place.Tokens)
+		inNeed := inputCounts[place]
+		effective := current - inNeed + outNeed
+		if place.Capacity >= 0 && effective > place.Capacity {
+			return ErrNotReady
+		}
+	}
+
+	// Consume input tokens.
+	var inputTokens []*Token
+	consumedPerPlace := make(map[*Place][]*Token)
+	for _, arc := range t.InputArcs {
+		tokens := arc.Place.Tokens[:arc.Weight]
+		arc.Place.Tokens = arc.Place.Tokens[arc.Weight:]
+		consumedPerPlace[arc.Place] = append(consumedPerPlace[arc.Place], tokens...)
 		inputTokens = append(inputTokens, tokens...)
 	}
 
-	// Check guard condition
+	// Guard check: guard failure is treated as not-ready; return tokens and exit quietly.
 	if t.Guard != nil && !t.Guard(inputTokens) {
-		// Guard failed, put tokens back
-		offset := 0
-		for _, arc := range t.InputArcs {
-			arc.Place.AddTokens(inputTokens[offset : offset+arc.Weight]...)
-			offset += arc.Weight
+		for place, tokens := range consumedPerPlace {
+			place.Tokens = append(tokens, place.Tokens...)
 		}
-		return fmt.Errorf("guard condition failed for %s", t.Name)
+		return ErrNotReady
 	}
 
-	// Execute action
+	// Execute action.
 	var outputTokens []*Token
-	var err error
 	if t.Action != nil {
-		outputTokens, err = t.Action(ctx, inputTokens)
+		actionOutput, err := t.Action(ctx, inputTokens)
 		if err != nil {
-			// Action failed, put input tokens back
-			offset := 0
-			for _, arc := range t.InputArcs {
-				arc.Place.AddTokens(inputTokens[offset : offset+arc.Weight]...)
-				offset += arc.Weight
+			// Roll back consumed tokens on action failure.
+			for place, tokens := range consumedPerPlace {
+				place.Tokens = append(tokens, place.Tokens...)
 			}
 			return fmt.Errorf("action failed for %s: %w", t.Name, err)
 		}
-	} else {
-		// No action, pass through input tokens
-		outputTokens = inputTokens
+		outputTokens = actionOutput
 	}
 
-	// Distribute output tokens
-	tokenIdx := 0
+	// Return resource tokens first (places that were both consumed and produced).
+	resourcePlaces := make(map[*Place]struct{})
+	for place := range outputCounts {
+		if _, consumed := inputCounts[place]; consumed {
+			resourcePlaces[place] = struct{}{}
+		}
+	}
+	for place := range resourcePlaces {
+		outputTokens = append(outputTokens, consumedPerPlace[place]...)
+	}
+
+	// If no action was defined, pass through non-resource tokens.
+	if t.Action == nil {
+		for place, tokens := range consumedPerPlace {
+			if _, isResource := resourcePlaces[place]; isResource {
+				continue
+			}
+			outputTokens = append(outputTokens, tokens...)
+		}
+	}
+
+	// Ensure output slice has enough tokens for all output arcs.
+	totalNeeded := 0
+	for _, need := range outputCounts {
+		totalNeeded += need
+	}
+	if len(outputTokens) < totalNeeded {
+		for len(outputTokens) < totalNeeded {
+			outputTokens = append(outputTokens, &Token{ID: fmt.Sprintf("gen-%d", len(outputTokens))})
+		}
+	}
+
+	// Distribute output tokens.
+	offset := 0
 	for _, arc := range t.OutputArcs {
-		tokensToAdd := outputTokens[tokenIdx:min(tokenIdx+arc.Weight, len(outputTokens))]
-
-		// If not enough output tokens, create generic ones
-		for len(tokensToAdd) < arc.Weight {
-			tokensToAdd = append(tokensToAdd, &Token{ID: fmt.Sprintf("gen-%d", len(tokensToAdd))})
-		}
-
-		if err := arc.Place.AddTokens(tokensToAdd...); err != nil {
-			return fmt.Errorf("failed to add output tokens to %s: %w", arc.Place.Name, err)
-		}
-		tokenIdx += arc.Weight
+		tokensToAdd := outputTokens[offset : offset+arc.Weight]
+		arc.Place.Tokens = append(arc.Place.Tokens, tokensToAdd...)
+		offset += arc.Weight
 	}
 
 	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

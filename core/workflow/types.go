@@ -6,6 +6,7 @@ import "context"
 type Workflow struct {
 	Name      string
 	Resources []Resource
+	Contexts  []Context
 	Channels  []Channel
 	Tasks     []Task
 	Gateways  []Gateway
@@ -16,6 +17,13 @@ type Resource struct {
 	ID       string
 	Type     string // "semaphore", "pool", "quota"
 	Capacity int    // -1 = unlimited
+}
+
+// Context represents shared workflow state held in a dedicated place
+type Context struct {
+	ID       string
+	Type     string // "context"
+	Capacity int    // default 1
 }
 
 // Channel represents a data flow channel
@@ -35,6 +43,7 @@ type Task struct {
 	Outputs  []string       // Multiple outputs
 	Requires map[string]int // Resource requirements: resource_id -> amount
 	Parallel bool           // Auto-spawn workers
+	Context  string         // Optional context place ID
 	Action   TaskAction
 	Config   map[string]interface{}
 }

@@ -45,6 +45,71 @@ A Petri net is a mathematical modeling language for describing distributed syste
 - Complex synchronization
 - Long-running workflows with checkpoints
 
+## DSL Examples
+
+**File**: `workflows/pipeline_barrier.yml`
+
+```yaml
+workflow:
+  name: Parallel Pipeline with Barrier
+
+  channels:
+    - id: raw_data
+      capacity: 1
+    - id: batch_a
+      capacity: 1
+    - id: batch_b
+      capacity: 1
+    - id: batch_c
+      capacity: 1
+    - id: result_a
+      capacity: 1
+    - id: result_b
+      capacity: 1
+    - id: result_c
+      capacity: 1
+    - id: final_result
+      capacity: 1
+
+  tasks:
+    - id: fetch
+      type: http
+      output: raw_data
+      config:
+        url: "https://api.example.com/data"
+
+    - id: split
+      type: splitter
+      input: raw_data
+      outputs: [batch_a, batch_b, batch_c]
+
+    - id: process_a
+      type: transform
+      input: batch_a
+      output: result_a
+      config: { script: "process_batch.py" }
+    - id: process_b
+      type: transform
+      input: batch_b
+      output: result_b
+      config: { script: "process_batch.py" }
+    - id: process_c
+      type: transform
+      input: batch_c
+      output: result_c
+      config: { script: "process_batch.py" }
+
+    - id: merge
+      type: aggregator
+      inputs: [result_a, result_b, result_c]
+      output: final_result
+
+  gateways:
+    - id: sync_barrier
+      type: barrier
+      wait_for: [process_a, process_b, process_c]
+```
+
 ## Project Structure
 
 ```

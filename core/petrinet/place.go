@@ -63,3 +63,14 @@ func (p *Place) TokenCount() int {
 	defer p.mu.Unlock()
 	return len(p.Tokens)
 }
+
+// CanAccept returns true if the place has capacity for the requested tokens.
+func (p *Place) CanAccept(count int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.Capacity < 0 {
+		return true
+	}
+	return len(p.Tokens)+count <= p.Capacity
+}

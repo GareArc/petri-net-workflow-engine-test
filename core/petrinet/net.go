@@ -2,6 +2,7 @@ package petrinet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -76,10 +77,13 @@ func (pn *PetriNet) Run(ctx context.Context) error {
 			go func(transition *Transition) {
 				defer wg.Done()
 				if err := transition.Fire(ctx); err != nil {
+					if errors.Is(err, ErrNotReady) {
+						return
+					}
 					errorsChan <- fmt.Errorf("%s: %w", transition.Name, err)
-				} else {
-					fmt.Printf("  🔥 Fired: %s\n", transition.Name)
+					return
 				}
+				fmt.Printf("  🔥 Fired: %s\n", transition.Name)
 			}(t)
 		}
 
@@ -137,6 +141,8 @@ func (pn *PetriNet) RunContinuous(ctx context.Context, pollInterval time.Duratio
 				if err := t.Fire(ctx); err == nil {
 					fmt.Printf("  🔥 Fired: %s\n", t.Name)
 					fired = true
+				} else if !errors.Is(err, ErrNotReady) {
+					return err
 				}
 				pn.mu.RLock()
 				break

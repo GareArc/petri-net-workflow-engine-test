@@ -13,6 +13,7 @@ type WorkflowYAML struct {
 	Workflow struct {
 		Name      string         `yaml:"name"`
 		Resources []ResourceYAML `yaml:"resources,omitempty"`
+		Contexts  []ContextYAML  `yaml:"contexts,omitempty"`
 		Channels  []ChannelYAML  `yaml:"channels,omitempty"`
 		Tasks     []TaskYAML     `yaml:"tasks"`
 		Gateways  []GatewayYAML  `yaml:"gateways,omitempty"`
@@ -23,6 +24,12 @@ type ResourceYAML struct {
 	ID       string `yaml:"id"`
 	Type     string `yaml:"type"`
 	Capacity int    `yaml:"capacity"`
+}
+
+type ContextYAML struct {
+	ID       string `yaml:"id"`
+	Capacity int    `yaml:"capacity,omitempty"`
+	Type     string `yaml:"type,omitempty"`
 }
 
 type ChannelYAML struct {
@@ -40,6 +47,7 @@ type TaskYAML struct {
 	Outputs  []string               `yaml:"outputs,omitempty"`
 	Requires map[string]int         `yaml:"requires,omitempty"`
 	Parallel bool                   `yaml:"parallel,omitempty"`
+	Context  string                 `yaml:"context,omitempty"`
 	Config   map[string]interface{} `yaml:"config,omitempty"`
 
 	// Task-specific fields
@@ -87,6 +95,7 @@ func (p *Parser) Parse(data []byte) (*workflow.Workflow, error) {
 	wf := &workflow.Workflow{
 		Name:      wfYAML.Workflow.Name,
 		Resources: make([]workflow.Resource, len(wfYAML.Workflow.Resources)),
+		Contexts:  make([]workflow.Context, len(wfYAML.Workflow.Contexts)),
 		Channels:  make([]workflow.Channel, len(wfYAML.Workflow.Channels)),
 		Tasks:     make([]workflow.Task, len(wfYAML.Workflow.Tasks)),
 		Gateways:  make([]workflow.Gateway, len(wfYAML.Workflow.Gateways)),
@@ -98,6 +107,19 @@ func (p *Parser) Parse(data []byte) (*workflow.Workflow, error) {
 			ID:       r.ID,
 			Type:     r.Type,
 			Capacity: r.Capacity,
+		}
+	}
+
+	// Convert contexts
+	for i, c := range wfYAML.Workflow.Contexts {
+		capacity := c.Capacity
+		if capacity == 0 {
+			capacity = 1
+		}
+		wf.Contexts[i] = workflow.Context{
+			ID:       c.ID,
+			Type:     c.Type,
+			Capacity: capacity,
 		}
 	}
 
@@ -121,6 +143,7 @@ func (p *Parser) Parse(data []byte) (*workflow.Workflow, error) {
 			Outputs:  t.Outputs,
 			Requires: t.Requires,
 			Parallel: t.Parallel,
+			Context:  t.Context,
 			Config:   make(map[string]interface{}),
 		}
 
@@ -161,6 +184,10 @@ func (p *Parser) Parse(data []byte) (*workflow.Workflow, error) {
 			Outputs: g.Outputs,
 			WaitFor: g.WaitFor,
 		}
+	}
+
+	if err := workflow.Validate(wf); err != nil {
+		return nil, fmt.Errorf("workflow validation failed: %w", err)
 	}
 
 	return wf, nil
